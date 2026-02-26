@@ -360,10 +360,21 @@ function renderMcpResult(
     return new Text(theme.fg("muted", "(empty result)"), 0, 0);
   }
 
-  const lines = text.split("\n");
+  // Pretty-print JSON if the result is minified on a single line,
+  // so that expand/collapse and line-count preview work correctly.
+  let formatted = text;
+  if (!text.includes("\n")) {
+    try {
+      formatted = JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      // Not JSON — keep as-is
+    }
+  }
+
+  const lines = formatted.split("\n");
 
   if (expanded || lines.length <= PREVIEW_LINES) {
-    return new Text(text, 0, 0);
+    return new Text(formatted, 0, 0);
   }
 
   const preview = lines.slice(0, PREVIEW_LINES).join("\n");
