@@ -3,7 +3,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
-import type { McpTool, McpResource, ServerDefinition, Transport } from "./types.js";
+import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  McpTool,
+  McpResource,
+  ServerDefinition,
+  ServerStreamResultPatchNotification,
+  Transport,
+} from "./types.js";
+import { serverStreamResultPatchNotificationSchema } from "./types.js";
 import { getStoredTokens } from "./oauth-handler.js";
 import { resolveNpxBinary } from "./npx-resolver.js";
 
@@ -18,9 +26,12 @@ interface ServerConnection {
   status: "connected" | "closed";
 }
 
+type UiStreamListener = (serverName: string, notification: ServerStreamResultPatchNotification["params"]) => void;
+
 export class McpServerManager {
   private connections = new Map<string, ServerConnection>();
   private connectPromises = new Map<string, Promise<ServerConnection>>();
+  private uiStreamListeners = new Map<string, UiStreamListener>();
   
   async connect(name: string, definition: ServerDefinition): Promise<ServerConnection> {
     // Dedupe concurrent connection attempts
@@ -84,6 +95,7 @@ export class McpServerManager {
     
     try {
       await client.connect(transport);
+      this.attachAdapterNotificationHandlers(name, client);
       
       // Discover tools and resources
       const [tools, resources] = await Promise.all([
@@ -190,6 +202,38 @@ export class McpServerManager {
       return [];
     }
   }
+
+  private attachAdapterNotificationHandlers(serverName: string, client: Client): void {
+    client.setNotificationHandler(serverStreamResultPatchNotificationSchema, (notification) => {
+      const listener = this.uiStreamListeners.get(notification.params.streamToken);
+      if (!listener) return;
+      listener(serverName, notification.params);
+    });
+  }
+
+  registerUiStreamListener(streamToken: string, listener: UiStreamListener): void {
+    this.uiStreamListeners.set(streamToken, listener);
+  }
+
+  removeUiStreamListener(streamToken: string): void {
+    this.uiStreamListeners.delete(streamToken);
+  }
+
+  async readResource(name: string, uri: string): Promise<ReadResourceResult> {
+    const connection = this.connections.get(name);
+    if (!connection || connection.status !== "connected") {
+      throw new Error(`Server "${name}" is not connected`);
+    }
+
+    try {
+      this.touch(name);
+      this.incrementInFlight(name);
+      return await connection.client.readResource({ uri });
+    } finally {
+      this.decrementInFlight(name);
+      this.touch(name);
+    }
+  }
   
   async close(name: string): Promise<void> {
     const connection = this.connections.get(name);
@@ -241,7 +285,7 @@ export class McpServerManager {
   isIdle(name: string, timeoutMs: number): boolean {
     const connection = this.connections.get(name);
     if (!connection || connection.status !== "connected") return false;
-    if (connection.inFlight && connection.inFlight > 0) return false;
+    if (connection.inFlight > 0) return false;
     return (Date.now() - connection.lastUsedAt) > timeoutMs;
   }
 }

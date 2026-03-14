@@ -3,9 +3,11 @@ import { existsSync, readFileSync, writeFileSync, renameSync, mkdirSync } from "
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { getToolUiResourceUri } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { McpTool, McpResource, ServerEntry, ToolMetadata } from "./types.js";
 import { formatToolName } from "./types.js";
 import { resourceNameToToolName } from "./resource-tools.js";
+import { extractToolUiStreamMode } from "./utils.js";
 
 const CACHE_VERSION = 1;
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,6 +17,8 @@ export interface CachedTool {
   name: string;
   description?: string;
   inputSchema?: unknown;
+  uiResourceUri?: string;
+  uiStreamMode?: "eager" | "stream-first";
 }
 
 export interface CachedResource {
@@ -122,6 +126,8 @@ export function reconstructToolMetadata(
       originalName: tool.name,
       description: tool.description ?? "",
       inputSchema: tool.inputSchema,
+      uiResourceUri: tool.uiResourceUri,
+      uiStreamMode: tool.uiStreamMode,
     });
   }
 
@@ -148,6 +154,8 @@ export function serializeTools(tools: McpTool[]): CachedTool[] {
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
+      uiResourceUri: tryGetToolUiResourceUri(t),
+      uiStreamMode: extractToolUiStreamMode(t._meta),
     }));
 }
 
@@ -172,4 +180,12 @@ function stableStringify(value: unknown): string {
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
   return `{${keys.map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
+}
+
+function tryGetToolUiResourceUri(tool: McpTool): string | undefined {
+  try {
+    return getToolUiResourceUri({ _meta: tool._meta });
+  } catch {
+    return undefined;
+  }
 }

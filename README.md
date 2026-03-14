@@ -176,6 +176,79 @@ Direct tools register from the metadata cache (`~/.pi/agent/mcp-cache.json`), so
 
 **Subagent integration:** If you use the subagent extension, agents can request direct MCP tools in their frontmatter with `mcp:server-name` syntax. See the subagent README for details.
 
+### MCP UI Integration
+
+Some MCP tools come with interactive browser UIs — dashboards, forms, visualizations. When you call a tool that has a UI resource, it opens automatically in your browser.
+
+**How it works:**
+
+1. Agent calls a tool like `launch_dashboard`
+2. The tool's metadata includes `_meta.ui.resourceUri` pointing to a UI resource
+3. pi-mcp-adapter fetches the UI HTML and opens it in a sandboxed browser iframe
+4. The UI can call MCP tools and send messages back to the agent
+
+**Bidirectional communication:**
+
+The UI isn't just a display — it talks back. When the UI sends a prompt or intent:
+
+- The message is stored and `triggerTurn()` wakes the agent
+- The agent retrieves messages via `mcp({ action: "ui-messages" })`
+- The agent responds, and the cycle continues
+
+This enables conversational UIs where the browser app and agent collaborate in real-time.
+
+**Message types from UI:**
+
+| Type | Purpose |
+|------|---------|
+| `prompt` | User message that triggers an agent response |
+| `intent` | Structured action with name + params |
+| `notify` | Fire-and-forget notification |
+| `message` | Generic message payload |
+| (custom) | Any other type forwarded as intent |
+
+**Retrieving UI messages:**
+
+```
+mcp({ action: "ui-messages" })
+```
+
+Returns accumulated messages from UI sessions. Each message includes `type`, `sessionId`, `serverName`, `toolName`, and `timestamp`. Prompt messages include `prompt`, intent messages include `intent` and `params`.
+
+**Browser controls:**
+
+- **Cmd/Ctrl+Enter** — Complete and close
+- **Escape** — Cancel and close
+- **Done/Cancel buttons** — Same as keyboard shortcuts
+
+**Technical notes:**
+
+- UIs run in sandboxed iframes with configurable CSP
+- Tool consent can be required before UI calls tools (never/once-per-server/always)
+- Works with both stdio and HTTP MCP servers
+- Uses a local 408KB AppBridge bundle (MCP SDK + Zod) for browser↔server communication
+
+### Local Example: Interactive Visualizer
+
+This repo now includes a full local MCP UI example at `examples/interactive-visualizer`.
+
+It shows how to ship one shared `ui://...` app resource that renders pre-generated interactive content locally, supports Mermaid and charts and custom explainers, exposes declarative view/layer/step controls plus chart summary metrics, and sends one final structured annotation payload back to the agent.
+
+From `examples/interactive-visualizer`:
+
+```bash
+npm install
+npm run install-local
+```
+
+Restart Pi so the new MCP entry is loaded, then open the bundled gallery with:
+
+```ts
+mcp({ tool: "interactive_visualizer_show_visualization_gallery", args: '{}' })
+```
+
+Use `npm run uninstall-local` from the same directory to remove the local MCP entry.
+
 ### Import Existing Configs
 
 Already have MCP set up elsewhere? Import it:
@@ -203,6 +276,7 @@ Add `.pi/mcp.json` in a project root for project-specific servers. Project confi
 | Describe | `mcp({ describe: "tool_name" })` |
 | Call | `mcp({ tool: "...", args: '{"key": "value"}' })` |
 | Connect | `mcp({ connect: "server-name" })` |
+| UI messages | `mcp({ action: "ui-messages" })` |
 
 Search includes both MCP tools and Pi tools (from extensions). Pi tools appear first with `[pi tool]` prefix. Space-separated words are OR'd.
 

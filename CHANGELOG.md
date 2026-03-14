@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **MCP UI Integration** - Full support for [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) specification. Tools with `_meta.ui.resourceUri` now open interactive browser UIs:
+  - Sandboxed iframe rendering with CSP support
+  - Bidirectional AppBridge communication (tool calls, messages, context updates)
+  - Works with both stdio and HTTP MCP servers
+  - User consent management for tool calls from UI (configurable: never/once-per-server/always)
+  - Display mode switching (inline/fullscreen/pip)
+  - Keyboard shortcuts: Cmd/Ctrl+Enter to complete, Escape to cancel
+  - **Bidirectional communication**: UI prompts/intents trigger agent turns via `pi.sendMessage({ triggerTurn: true })`
+  - **Non-blocking UI**: Tool returns immediately with MCP result, agent responds to UI interactions as separate turns
+  - **Real-time agent responses**: Each prompt/intent from UI triggers a new agent turn immediately
+  - **Full action coverage**: Agent notified for prompts, intents, notifications, link opens, and tool calls
+  - **`mcp({ action: "ui-messages" })`**: Retrieve accumulated messages from completed UI sessions
+
+- **Logger module** (`logger.ts`) - Centralized logging with:
+  - Log levels (debug/info/warn/error)
+  - Contextual child loggers (server, session, tool)
+  - Enable debug mode via `MCP_UI_DEBUG=1` environment variable
+
+- **Error types** (`errors.ts`) - Structured errors with recovery hints:
+  - `ResourceFetchError`, `ResourceParseError` - UI resource loading failures
+  - `BridgeConnectionError` - AppBridge communication issues
+  - `ConsentError` - Tool call consent required/denied
+  - `SessionError`, `ServerError` - Session and server lifecycle errors
+  - `wrapError()` helper for consistent error handling
+
+- **Test suite** - 88 unit tests covering:
+  - Consent manager modes and state transitions
+  - UI resource handler parsing and validation
+  - Host HTML template generation and XSS prevention
+  - Logger levels, context, and handlers
+  - Error types and helper functions
+
+- **Local interactive visualizer example** - Added `examples/interactive-visualizer`, a repo-local custom MCP server example for rich MCP UI rendering:
+  - `show_visualization` renders typed Mermaid, chart, and custom explainer specs
+  - `show_visualization_gallery` opens five trusted built-in examples
+  - Pattern-aware spec fields for `pattern`, `chrome`, `initialState`, declarative controls, and chart `summaryMetrics`
+  - Shared self-contained HTML app resource bundled for blob-iframe hosting
+  - Local explore/annotate workflow with canonical `visualization_annotations_submitted\n{...}` handoff envelopes
+  - `mcp({ action: "ui-messages" })` now normalizes canonical handoff prompts back into structured intent-style details
+  - Example-local `install-local` and `uninstall-local` scripts for idempotent config management
+  - Stream-first `show_visualization` sessions with adapter-owned intermediate result patches, phased live-build UI updates, checkpoint/final envelopes, and annotation handoff metadata (`streamId`/`sequence`)
+  - Focused test coverage for schema validation, server registration, annotation state, runtime defaults, handoff normalization, and streaming transport/runtime behavior
+
+### Technical Notes
+- Uses local minified AppBridge bundle (408KB) to avoid CDN Zod bundling issues
+- Blob URL iframe approach with null eventSource for cross-origin compatibility
+- SSE for real-time tool result streaming to browser
+
 ## [2.1.2] - 2026-02-03
 
 ### Changed
