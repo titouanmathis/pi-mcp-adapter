@@ -52,6 +52,7 @@
     "types.ts",
     "ui-stream-types.ts",
     "config.ts",
+    "providers.ts",
     "server-manager.ts",
     "sampling-handler.ts",
     "tool-registrar.ts",

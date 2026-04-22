@@ -1,8 +1,9 @@
 import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
 import type { McpExtensionState } from "./state.ts";
+import type { McpConfig } from "./types.ts";
 import { Type } from "typebox";
 import { showStatus, showTools, reconnectServers, authenticateServer, logoutServer, openMcpAuthPanel, openMcpPanel, openMcpSetup } from "./commands.ts";
-import { loadMcpConfig } from "./config.ts";
+import { resolveMcpConfig } from "./config.ts";
 import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.ts";
 import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.ts";
 import { loadMetadataCache } from "./metadata-cache.ts";
@@ -15,6 +16,7 @@ export default function mcpAdapter(pi: ExtensionAPI) {
   let state: McpExtensionState | null = null;
   let initPromise: Promise<McpExtensionState> | null = null;
   let lifecycleGeneration = 0;
+  let toolsRegistered = false;
 
   async function shutdownState(currentState: McpExtensionState | null, reason: string): Promise<void> {
     if (!currentState) return;
@@ -47,39 +49,130 @@ export default function mcpAdapter(pi: ExtensionAPI) {
   }
 
   const earlyConfigPath = getConfigPathFromArgv();
-  const earlyConfig = loadMcpConfig(earlyConfigPath);
-  const earlyCache = loadMetadataCache();
-  const prefix = earlyConfig.settings?.toolPrefix ?? "server";
-
-  const envRaw = process.env.MCP_DIRECT_TOOLS;
-  const directSpecs = envRaw === "__none__"
-    ? []
-    : resolveDirectTools(
-        earlyConfig,
-        earlyCache,
-        prefix,
-        envRaw?.split(",").map(s => s.trim()).filter(Boolean),
-      );
-  const missingConfiguredDirectToolServers = getMissingConfiguredDirectToolServers(earlyConfig, earlyCache);
-  const shouldRegisterProxyTool =
-    earlyConfig.settings?.disableProxyTool !== true
-    || directSpecs.length === 0
-    || missingConfiguredDirectToolServers.length > 0;
-
-  for (const spec of directSpecs) {
-    (pi.registerTool as (tool: unknown) => unknown)({
-      name: spec.prefixedName,
-      label: `MCP: ${spec.originalName}`,
-      description: spec.description || "(no description)",
-      promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
-      parameters: Type.Unsafe((spec.inputSchema || { type: "object", properties: {} }) as never),
-      execute: createDirectToolExecutor(() => state, () => initPromise, spec),
-      renderCall: createMcpDirectToolCallRenderer(spec.prefixedName),
-      renderResult: renderMcpToolResult,
-    });
-  }
 
   const getPiTools = (): ToolInfo[] => pi.getAllTools();
+
+  function registerConfiguredTools(config: McpConfig): void {
+    const cache = loadMetadataCache();
+    const prefix = config.settings?.toolPrefix ?? "server";
+    const envRaw = process.env.MCP_DIRECT_TOOLS;
+    const directSpecs = envRaw === "__none__"
+      ? []
+      : resolveDirectTools(
+          config,
+          cache,
+          prefix,
+          envRaw?.split(",").map(s => s.trim()).filter(Boolean),
+        );
+    const missingConfiguredDirectToolServers = getMissingConfiguredDirectToolServers(
+      config,
+      cache,
+    );
+    const shouldRegisterProxyTool =
+      config.settings?.disableProxyTool !== true
+      || directSpecs.length === 0
+      || missingConfiguredDirectToolServers.length > 0;
+
+    for (const spec of directSpecs) {
+      (pi.registerTool as (tool: unknown) => unknown)({
+        name: spec.prefixedName,
+        label: `MCP: ${spec.originalName}`,
+        description: spec.description || "(no description)",
+        promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
+        parameters: Type.Unsafe((spec.inputSchema || { type: "object", properties: {} }) as never),
+        execute: createDirectToolExecutor(() => state, () => initPromise, spec),
+        renderCall: createMcpDirectToolCallRenderer(spec.prefixedName),
+        renderResult: renderMcpToolResult,
+      });
+    }
+
+    if (shouldRegisterProxyTool) {
+      (pi.registerTool as (tool: unknown) => unknown)({
+        name: "mcp",
+        label: "MCP",
+        description: buildProxyDescription(config, cache, directSpecs),
+        promptSnippet: "MCP gateway - connect to MCP servers and call their tools",
+        renderCall: renderMcpProxyToolCall,
+        parameters: Type.Object({
+          tool: Type.Optional(Type.String({ description: "Tool name to call (e.g., 'xcodebuild_list_sims')" })),
+          args: Type.Optional(Type.String({ description: "Arguments as JSON string (e.g., '{\"key\": \"value\"}')" })),
+          connect: Type.Optional(Type.String({ description: "Server name to connect (lazy connect + metadata refresh)" })),
+          describe: Type.Optional(Type.String({ description: "Tool name to describe (shows parameters)" })),
+          search: Type.Optional(Type.String({ description: "Search tools by name/description" })),
+          regex: Type.Optional(Type.Boolean({ description: "Treat search as regex (default: substring match)" })),
+          includeSchemas: Type.Optional(Type.Boolean({ description: "Include parameter schemas in search results (default: true)" })),
+          server: Type.Optional(Type.String({ description: "Filter to specific server (also disambiguates tool calls)" })),
+          action: Type.Optional(Type.String({ description: "Action: 'ui-messages' to retrieve prompts/intents from UI sessions" })),
+        }),
+        renderResult: renderMcpToolResult,
+        async execute(_toolCallId, params: {
+          tool?: string;
+          args?: string;
+          connect?: string;
+          describe?: string;
+          search?: string;
+          regex?: boolean;
+          includeSchemas?: boolean;
+          server?: string;
+          action?: string;
+        }, _signal, _onUpdate, _ctx) {
+          let parsedArgs: Record<string, unknown> | undefined;
+          if (params.args) {
+            try {
+              parsedArgs = JSON.parse(params.args);
+              if (typeof parsedArgs !== "object" || parsedArgs === null || Array.isArray(parsedArgs)) {
+                const gotType = Array.isArray(parsedArgs) ? "array" : parsedArgs === null ? "null" : typeof parsedArgs;
+                throw new Error(`Invalid args: expected a JSON object, got ${gotType}`);
+              }
+            } catch (error) {
+              if (error instanceof SyntaxError) {
+                throw new Error(`Invalid args JSON: ${error.message}`, { cause: error });
+              }
+              throw error;
+            }
+          }
+
+          if (!state && initPromise) {
+            try {
+              state = await initPromise;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              return {
+                content: [{ type: "text" as const, text: `MCP initialization failed: ${message}` }],
+                details: { error: "init_failed", message },
+              };
+            }
+          }
+          if (!state) {
+            return {
+              content: [{ type: "text" as const, text: "MCP not initialized" }],
+              details: { error: "not_initialized" },
+            };
+          }
+
+          if (params.action === "ui-messages") {
+            return executeUiMessages(state);
+          }
+          if (params.tool) {
+            return executeCall(state, params.tool, parsedArgs, params.server, getPiTools);
+          }
+          if (params.connect) {
+            return executeConnect(state, params.connect);
+          }
+          if (params.describe) {
+            return executeDescribe(state, params.describe);
+          }
+          if (params.search) {
+            return executeSearch(state, params.search, params.regex, params.server, params.includeSchemas);
+          }
+          if (params.server) {
+            return executeList(state, params.server);
+          }
+          return executeStatus(state);
+        },
+      });
+    }
+  }
 
   pi.registerFlag("mcp-config", {
     description: "Path to MCP config file",
@@ -105,11 +198,17 @@ export default function mcpAdapter(pi: ExtensionAPI) {
       return;
     }
 
+    const resolved = resolveMcpConfig(pi, earlyConfigPath, ctx.cwd);
+    if (!toolsRegistered) {
+      registerConfiguredTools(resolved.config);
+      toolsRegistered = true;
+    }
+
     await initializeOAuth().catch(err => {
       console.error("MCP OAuth initialization failed:", err);
     });
 
-    const promise = initializeMcp(pi, ctx);
+    const promise = initializeMcp(pi, ctx, resolved.config, resolved.provenance);
     initPromise = promise;
 
     promise.then(async (nextState) => {
@@ -246,91 +345,4 @@ export default function mcpAdapter(pi: ExtensionAPI) {
       await authenticateServer(serverName, state.config, ctx);
     },
   });
-
-  if (shouldRegisterProxyTool) {
-    (pi.registerTool as (tool: unknown) => unknown)({
-      name: "mcp",
-      label: "MCP",
-      description: buildProxyDescription(earlyConfig, earlyCache, directSpecs),
-      promptSnippet: "MCP gateway - connect to MCP servers and call their tools",
-      renderCall: renderMcpProxyToolCall,
-      parameters: Type.Object({
-        tool: Type.Optional(Type.String({ description: "Tool name to call (e.g., 'xcodebuild_list_sims')" })),
-        args: Type.Optional(Type.String({ description: "Arguments as JSON string (e.g., '{\"key\": \"value\"}')" })),
-        connect: Type.Optional(Type.String({ description: "Server name to connect (lazy connect + metadata refresh)" })),
-        describe: Type.Optional(Type.String({ description: "Tool name to describe (shows parameters)" })),
-        search: Type.Optional(Type.String({ description: "Search tools by name/description" })),
-        regex: Type.Optional(Type.Boolean({ description: "Treat search as regex (default: substring match)" })),
-        includeSchemas: Type.Optional(Type.Boolean({ description: "Include parameter schemas in search results (default: true)" })),
-        server: Type.Optional(Type.String({ description: "Filter to specific server (also disambiguates tool calls)" })),
-        action: Type.Optional(Type.String({ description: "Action: 'ui-messages' to retrieve prompts/intents from UI sessions" })),
-      }),
-      renderResult: renderMcpToolResult,
-      async execute(_toolCallId, params: {
-        tool?: string;
-        args?: string;
-        connect?: string;
-        describe?: string;
-        search?: string;
-        regex?: boolean;
-        includeSchemas?: boolean;
-        server?: string;
-        action?: string;
-      }, _signal, _onUpdate, _ctx) {
-        let parsedArgs: Record<string, unknown> | undefined;
-        if (params.args) {
-          try {
-            parsedArgs = JSON.parse(params.args);
-            if (typeof parsedArgs !== "object" || parsedArgs === null || Array.isArray(parsedArgs)) {
-              const gotType = Array.isArray(parsedArgs) ? "array" : parsedArgs === null ? "null" : typeof parsedArgs;
-              throw new Error(`Invalid args: expected a JSON object, got ${gotType}`);
-            }
-          } catch (error) {
-            if (error instanceof SyntaxError) {
-              throw new Error(`Invalid args JSON: ${error.message}`, { cause: error });
-            }
-            throw error;
-          }
-        }
-
-        if (!state && initPromise) {
-          try {
-            state = await initPromise;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return {
-              content: [{ type: "text" as const, text: `MCP initialization failed: ${message}` }],
-              details: { error: "init_failed", message },
-            };
-          }
-        }
-        if (!state) {
-          return {
-            content: [{ type: "text" as const, text: "MCP not initialized" }],
-            details: { error: "not_initialized" },
-          };
-        }
-
-        if (params.action === "ui-messages") {
-          return executeUiMessages(state);
-        }
-        if (params.tool) {
-          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools);
-        }
-        if (params.connect) {
-          return executeConnect(state, params.connect);
-        }
-        if (params.describe) {
-          return executeDescribe(state, params.describe);
-        }
-        if (params.search) {
-          return executeSearch(state, params.search, params.regex, params.server, params.includeSchemas);
-        }
-        if (params.server) {
-          return executeList(state, params.server);
-        }
-        return executeStatus(state);
-      },
-    });
-  }
 }

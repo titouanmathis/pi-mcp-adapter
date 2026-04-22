@@ -4,7 +4,6 @@ import type { McpAuthResult, McpConfig, ServerEntry, McpPanelCallbacks, McpPanel
 import {
   ensureCompatibilityImports,
   getMcpDiscoverySummary,
-  getServerProvenance,
   previewCompatibilityImports,
   previewSharedServerEntry,
   previewStarterProjectConfig,
@@ -348,7 +347,7 @@ export async function openMcpPanel(
   const config = state.config;
   const cache = loadMetadataCache();
   const configPath = pi.getFlag("mcp-config") as string | undefined ?? configOverridePath;
-  const provenanceMap = getServerProvenance(configPath, ctx.cwd);
+  const provenanceMap = state.provenance;
   const { lines: noticeLines, fingerprint } = buildSharedConfigNoticeLines(configPath, ctx.cwd);
 
   const callbacks = buildMcpPanelCallbacks(state, config, ctx);
@@ -397,7 +396,7 @@ export async function openMcpAuthPanel(
 
   const cache = loadMetadataCache();
   const configPath = pi.getFlag("mcp-config") as string | undefined ?? configOverridePath;
-  const provenanceMap = getServerProvenance(configPath, ctx.cwd);
+  const provenanceMap = state.provenance;
   const callbacks = buildMcpPanelCallbacks(state, config, ctx);
   const { createMcpPanel } = await import("./mcp-panel.ts");
 
