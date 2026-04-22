@@ -48,6 +48,7 @@
     "types.ts",
     "ui-stream-types.ts",
     "config.ts",
+    "providers.ts",
     "server-manager.ts",
     "tool-registrar.ts",
     "resource-tools.ts",
