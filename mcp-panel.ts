@@ -92,8 +92,9 @@ interface ToolState {
 interface ServerState {
   name: string;
   expanded: boolean;
-  source: "user" | "project" | "import";
+  source: "user" | "project" | "import" | "extension";
   importKind?: string;
+  extensionSource?: string;
   excludeTools?: string[];
   exposeResources: boolean;
   connectionStatus: ConnectionStatus;
@@ -193,6 +194,7 @@ class McpPanel {
         expanded: false,
         source: prov?.kind ?? "user",
         importKind: prov?.importKind,
+        extensionSource: prov?.extensionSource,
         excludeTools: definition.excludeTools,
         exposeResources: definition.exposeResources !== false,
         connectionStatus: status,
@@ -378,6 +380,8 @@ class McpPanel {
         tool.isDirect = !tool.isDirect;
         if (tool.isDirect && server.source === "import") {
           this.importNotice = `Imported from ${server.importKind ?? "external"} — will copy to user config on save`;
+        } else if (tool.isDirect && server.source === "extension") {
+          this.importNotice = `Provided by ${server.extensionSource ?? "extension"} — will copy to user config on save`;
         }
         this.updateDirty();
       }
@@ -442,6 +446,8 @@ class McpPanel {
       const newState = !server.tools.every((t) => t.isDirect);
       if (server.source === "import" && newState) {
         this.importNotice = `Imported from ${server.importKind ?? "external"} — will copy to user config on save`;
+      } else if (server.source === "extension" && newState) {
+        this.importNotice = `Provided by ${server.extensionSource ?? "extension"} — will copy to user config on save`;
       }
       for (const t of server.tools) t.isDirect = newState;
     } else if (item.toolIndex !== undefined) {
@@ -449,6 +455,8 @@ class McpPanel {
       tool.isDirect = !tool.isDirect;
       if (tool.isDirect && server.source === "import") {
         this.importNotice = `Imported from ${server.importKind ?? "external"} — will copy to user config on save`;
+      } else if (tool.isDirect && server.source === "extension") {
+        this.importNotice = `Provided by ${server.extensionSource ?? "extension"} — will copy to user config on save`;
       }
     }
     this.updateDirty();
@@ -675,7 +683,11 @@ class McpPanel {
     const prefix = isCursor ? fg(t.selected, expandIcon) : fg(t.border, server.expanded ? expandIcon : "·");
 
     const nameStr = isCursor ? bold(fg(t.selected, server.name)) : server.name;
-    const importLabel = server.source === "import" ? fg(t.description, ` (${server.importKind ?? "import"})`) : "";
+    const importLabel = server.source === "import"
+      ? fg(t.description, ` (${server.importKind ?? "import"})`)
+      : server.source === "extension"
+        ? fg(t.description, ` (${server.extensionSource ?? "extension"})`)
+        : "";
 
     if (!server.hasCachedData) {
       return `${prefix}   ${nameStr}${importLabel}  ${fg(t.description, "(not cached)")}`;

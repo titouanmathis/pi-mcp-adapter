@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { McpExtensionState } from "./state.js";
 import type { McpConfig, ServerEntry, McpPanelCallbacks, McpPanelResult } from "./types.js";
-import { getServerProvenance, writeDirectToolsConfig } from "./config.js";
+import { writeDirectToolsConfig } from "./config.js";
 import { lazyConnect, updateMetadataCache, updateStatusBar, getFailureAgeSeconds } from "./init.js";
 import { loadMetadataCache } from "./metadata-cache.js";
 import { buildToolMetadata } from "./tool-metadata.js";
@@ -182,13 +182,12 @@ export async function authenticateServer(
 
 export async function openMcpPanel(
   state: McpExtensionState,
-  pi: ExtensionAPI,
+  _pi: ExtensionAPI,
   ctx: ExtensionContext,
-  configOverridePath?: string,
 ): Promise<void> {
   const config = state.config;
   const cache = loadMetadataCache();
-  const provenanceMap = getServerProvenance(pi.getFlag("mcp-config") as string | undefined ?? configOverridePath);
+  const provenanceMap = state.provenance;
 
   const callbacks: McpPanelCallbacks = {
     reconnect: async (serverName: string) => {
