@@ -11,7 +11,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:oauth-provider": "node --import tsx --test mcp-oauth-provider.test.ts"
   },
   "repository": {
     "type": "git",

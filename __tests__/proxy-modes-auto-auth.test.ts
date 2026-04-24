@@ -116,6 +116,35 @@ describe("proxy auto auth", () => {
     expect(result.content[0].text).toContain("/mcp-auth demo");
   });
 
+  it("uses custom authRequiredMessage for non-ui autoAuth failures", async () => {
+    const { executeConnect } = await import("../proxy-modes.ts");
+
+    const state = {
+      config: {
+        settings: {
+          autoAuth: true,
+          authRequiredMessage: "Reconnect ${server} from the host app.",
+        },
+        mcpServers: {
+          demo: { url: "https://api.example.com/mcp", auth: "oauth" },
+        },
+      },
+      manager: {
+        connect: vi.fn(async () => ({ status: "needs-auth" })),
+        close: vi.fn(async () => {}),
+        getConnection: vi.fn(() => ({ status: "needs-auth" })),
+      },
+      toolMetadata: new Map(),
+      failureTracker: new Map(),
+      ui: undefined,
+    } as any;
+
+    const result = await executeConnect(state, "demo");
+
+    expect(mocks.authenticate).not.toHaveBeenCalled();
+    expect(result.content[0].text).toBe("Reconnect demo from the host app.");
+  });
+
   it("auto-authenticates and retries executeCall once", async () => {
     const { executeCall } = await import("../proxy-modes.ts");
 

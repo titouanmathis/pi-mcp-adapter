@@ -131,4 +131,48 @@ describe("direct tools auto auth", () => {
     expect(result.content[0].text).toContain("interactive session");
     expect(result.content[0].text).toContain("/mcp-auth demo");
   });
+
+  it("uses custom authRequiredMessage in non-ui direct tool auth failures", async () => {
+    const { createDirectToolExecutor } = await import("../direct-tools.ts");
+
+    const state = {
+      config: {
+        settings: {
+          autoAuth: true,
+          authRequiredMessage: "Reconnect ${server} from the host app.",
+        },
+        mcpServers: {
+          demo: { url: "https://api.example.com/mcp", auth: "oauth" },
+        },
+      },
+      manager: {
+        close: vi.fn(async () => {}),
+        getConnection: vi.fn(() => ({ status: "needs-auth" })),
+        touch: vi.fn(),
+        incrementInFlight: vi.fn(),
+        decrementInFlight: vi.fn(),
+      },
+      failureTracker: new Map(),
+      ui: undefined,
+      completedUiSessions: [],
+    } as any;
+
+    mocks.lazyConnect.mockResolvedValue(false);
+
+    const executor = createDirectToolExecutor(
+      () => state,
+      () => null,
+      {
+        serverName: "demo",
+        originalName: "search",
+        prefixedName: "demo_search",
+        description: "Search",
+      },
+    );
+
+    const result = await executor("id", {}, undefined as any, () => {}, undefined as any);
+
+    expect(mocks.authenticate).not.toHaveBeenCalled();
+    expect(result.content[0].text).toBe("Reconnect demo from the host app.");
+  });
 });

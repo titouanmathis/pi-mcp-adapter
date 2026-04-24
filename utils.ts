@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { platform } from "node:os";
+import type { McpConfig } from "./types.js";
 
 async function execOpen(pi: ExtensionAPI, target: string, browser?: string) {
   const os = platform();
@@ -68,6 +69,15 @@ export function truncateAtWord(text: string, target: number): string {
   }
 
   return truncated + "...";
+}
+
+export function formatAuthRequiredMessage(
+  config: Pick<McpConfig, "settings">,
+  serverName: string,
+  defaultMessage: string,
+): string {
+  const template = config.settings?.authRequiredMessage;
+  return template ? template.replaceAll("${server}", serverName) : defaultMessage;
 }
 
 /**

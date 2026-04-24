@@ -10,6 +10,7 @@ import { maybeStartUiSession, type UiSessionRuntime } from "./ui-session.js";
 import { formatToolName, isToolExcluded } from "./types.js";
 import { resourceNameToToolName } from "./resource-tools.js";
 import { authenticate, supportsOAuth } from "./mcp-auth-flow.js";
+import { formatAuthRequiredMessage } from "./utils.js";
 
 const BUILTIN_NAMES = new Set(["read", "bash", "edit", "write", "grep", "find", "ls", "mcp"]);
 
@@ -17,6 +18,22 @@ type DirectAutoAuthResult =
   | { status: "skipped" }
   | { status: "success" }
   | { status: "failed"; message: string };
+
+function getDirectAuthRequiredMessage(
+  state: McpExtensionState,
+  serverName: string,
+  defaultMessage = `MCP server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} first.`,
+): string {
+  return formatAuthRequiredMessage(state.config, serverName, defaultMessage);
+}
+
+function getDirectAuthFailedMessage(state: McpExtensionState, serverName: string, message: string): string {
+  const customGuidance = state.config.settings?.authRequiredMessage;
+  if (customGuidance) {
+    return `OAuth authentication failed for "${serverName}": ${message}. ${getDirectAuthRequiredMessage(state, serverName)}`;
+  }
+  return `OAuth authentication failed for "${serverName}": ${message}. Run /mcp-auth ${serverName} first.`;
+}
 
 async function attemptDirectAutoAuth(
   state: McpExtensionState,
@@ -35,7 +52,11 @@ async function attemptDirectAutoAuth(
   if (!state.ui && grantType !== "client_credentials") {
     return {
       status: "failed",
-      message: `MCP server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} in an interactive session.`,
+      message: getDirectAuthRequiredMessage(
+        state,
+        serverName,
+        `MCP server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} in an interactive session.`,
+      ),
     };
   }
 
@@ -46,7 +67,7 @@ async function attemptDirectAutoAuth(
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: "failed",
-      message: `OAuth authentication failed for "${serverName}": ${message}. Run /mcp-auth ${serverName} first.`,
+      message: getDirectAuthFailedMessage(state, serverName, message),
     };
   }
 }
@@ -290,7 +311,7 @@ export function createDirectToolExecutor(
     if (!connected) {
       const authConnection = state.manager.getConnection(spec.serverName);
       if (authConnection?.status === "needs-auth") {
-        const message = `MCP server "${spec.serverName}" requires OAuth authentication. Run /mcp-auth ${spec.serverName} first.`;
+        const message = getDirectAuthRequiredMessage(state, spec.serverName);
         return {
           content: [{ type: "text" as const, text: message }],
           details: { error: "auth_required", server: spec.serverName, message, autoAuthAttempted },

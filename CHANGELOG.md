@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added configured Vitest coverage for OAuth provider authorization fallback behavior.
+- Added `test:oauth-provider` for running the root OAuth provider node test with the required TypeScript loader.
+
+### Fixed
+- Applied `settings.authRequiredMessage` to proxy and direct-tool auth-required paths, including non-UI `autoAuth` failures.
+
 ## [2.4.2] - 2026-04-22
 
 ### Fixed

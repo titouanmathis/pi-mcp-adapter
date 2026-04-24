@@ -6,7 +6,7 @@ import { lazyConnect, updateServerMetadata, updateMetadataCache, getFailureAgeSe
 import { buildToolMetadata, getToolNames, findToolByName, formatSchema } from "./tool-metadata.js";
 import { transformMcpContent } from "./tool-registrar.js";
 import { maybeStartUiSession, type UiSessionRuntime } from "./ui-session.js";
-import { truncateAtWord } from "./utils.js";
+import { formatAuthRequiredMessage, truncateAtWord } from "./utils.js";
 import { authenticate, supportsOAuth } from "./mcp-auth-flow.js";
 
 type ProxyToolResult = AgentToolResult<Record<string, unknown>>;
@@ -16,12 +16,20 @@ type AutoAuthResult =
   | { status: "success" }
   | { status: "failed"; message: string };
 
-function getAuthRequiredMessage(state: McpExtensionState, serverName: string): string {
-  const template = state.config.settings?.authRequiredMessage;
-  if (template) {
-    return template.replaceAll("${server}", serverName);
+function getAuthRequiredMessage(
+  state: McpExtensionState,
+  serverName: string,
+  defaultMessage = `Server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} first.`,
+): string {
+  return formatAuthRequiredMessage(state.config, serverName, defaultMessage);
+}
+
+function getAuthFailedMessage(state: McpExtensionState, serverName: string, message: string): string {
+  const customGuidance = state.config.settings?.authRequiredMessage;
+  if (customGuidance) {
+    return `OAuth authentication failed for "${serverName}": ${message}. ${getAuthRequiredMessage(state, serverName)}`;
   }
-  return `Server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} first.`;
+  return `OAuth authentication failed for "${serverName}": ${message}. Run /mcp-auth ${serverName} first.`;
 }
 
 async function attemptAutoAuth(
@@ -41,7 +49,11 @@ async function attemptAutoAuth(
   if (!state.ui && grantType !== "client_credentials") {
     return {
       status: "failed",
-      message: `Server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} in an interactive session.`,
+      message: getAuthRequiredMessage(
+        state,
+        serverName,
+        `Server "${serverName}" requires OAuth authentication. Run /mcp-auth ${serverName} in an interactive session.`,
+      ),
     };
   }
 
@@ -52,7 +64,7 @@ async function attemptAutoAuth(
     const message = error instanceof Error ? error.message : String(error);
     return {
       status: "failed",
-      message: `OAuth authentication failed for "${serverName}": ${message}. Run /mcp-auth ${serverName} first.`,
+      message: getAuthFailedMessage(state, serverName, message),
     };
   }
 }
