@@ -8,6 +8,10 @@
   "bin": {
     "pi-mcp-adapter": "cli.js"
   },
+  "exports": {
+    ".": "./index.ts",
+    "./providers": "./providers.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
