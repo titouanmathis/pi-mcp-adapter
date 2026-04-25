@@ -272,6 +272,61 @@ Supported: `cursor`, `claude-code`, `claude-desktop`, `vscode`, `windsurf`, `cod
 
 Add `.pi/mcp.json` in a project root for project-specific servers. Project config overrides global and imported servers.
 
+## Extension-Contributed Servers
+
+Extensions can contribute MCP server definitions programmatically. This is useful when an extension wants to ship MCP-backed functionality without asking users to manually copy server entries into `~/.pi/agent/mcp.json` first.
+
+Use `registerMcpServerProvider(...)` from `pi-mcp-adapter/providers`:
+
+```ts
+import { registerMcpServerProvider } from "pi-mcp-adapter/providers";
+
+export default function myExtension(pi) {
+  registerMcpServerProvider(pi, () => ({
+    source: "my-extension",
+    servers: {
+      "my-server": {
+        command: "npx",
+        args: ["-y", "my-mcp-server"],
+        lifecycle: "lazy"
+      }
+    }
+  }));
+}
+```
+
+A provider returns one contribution or an array of contributions:
+
+```ts
+{
+  source: "my-extension",
+  priority: 0,
+  servers: {
+    "server-name": {
+      command: "npx",
+      args: ["-y", "some-mcp-server"]
+    }
+  }
+}
+```
+
+Fields:
+
+| Field | Description |
+|-------|-------------|
+| `source` | Stable identifier for the contributing extension, shown in provenance/UI notices |
+| `priority` | Optional ordering between extension providers (lower values merged first, default: `0`) |
+| `servers` | Standard `mcpServers` entries keyed by server name |
+
+Merge order:
+
+1. Extension providers contribute default server definitions
+2. Imported configs load
+3. User config overrides imported and extension defaults
+4. Project config overrides everything
+
+If a user changes direct tool settings for an imported or extension-provided server via `/mcp`, the adapter writes the resolved server definition into the user config so the override persists.
+
 ## Usage
 
 | Mode | Example |
