@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added first-run onboarding inside the extension: `/mcp` now shows shared-config hints or actionable empty states, and `/mcp setup` opens a guided setup flow for compatibility imports, minimal `.mcp.json` scaffolding, detected config paths, RepoPrompt quick-add, and exact before/after write previews.
 - Added automatic Pi-core reload after setup or direct-tool config changes, using the same flow as `/reload` so freshly configured direct tools can appear without a manual restart.
 - Added a dedicated Pi-owned onboarding state file so shared-config hints behave as one-time guidance instead of repeating every session.
+- `renderCall` on direct tools and the `mcp` proxy tool: displays tool name and arguments inline on invocation, matching the style of native pi tools like `read` and `edit`.
+- `renderResult` on direct tools and the `mcp` proxy tool: results collapse to 10 lines by default with a native Ctrl+O expand hint, consistent with built-in pi tools like `bash` and `read`.
+- Extension-contributed MCP server providers: Pi extensions can now register MCP server definitions programmatically, with provenance tracking and user/project config overrides applied during config resolution.
 
 ### Changed
 - Updated config precedence to prefer shared MCP files first, then Pi overrides, with `.pi/mcp.json` acting as the final Pi-specific project override.
