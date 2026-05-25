@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added extension-contributed MCP server providers.
+- Documented extension-contributed MCP server providers and exported the `pi-mcp-adapter/providers` subpath.
 
 ### Fixed
 - Pretty-print single-line JSON MCP text results before collapsed preview rendering.
