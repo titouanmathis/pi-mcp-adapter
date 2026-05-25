@@ -115,7 +115,15 @@ export function createMcpDirectToolCallRenderer(displayName: string) {
 
 function blockToLines(block: McpToolContentBlock): string[] {
   if (block.type === "text") {
-    return block.text.split("\n");
+    let text = block.text;
+    if (!text.includes("\n")) {
+      try {
+        text = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        // Not JSON — keep as-is.
+      }
+    }
+    return text.split("\n");
   }
   return [`[image: ${block.mimeType}]`];
 }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added extension-contributed MCP server providers.
+
+### Fixed
+- Pretty-print single-line JSON MCP text results before collapsed preview rendering.
+
 ## [2.8.0] - 2026-05-25
 
 ### Added

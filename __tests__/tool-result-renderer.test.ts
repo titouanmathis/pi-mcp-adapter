@@ -84,6 +84,17 @@ describe("MCP tool result renderer", () => {
     });
   });
 
+  it("pretty-prints single-line JSON text before collapsing", () => {
+    const display = formatMcpToolResultLines(result([
+      { type: "text", text: '{"ok":true,"items":[1,2]}' },
+    ]), false);
+
+    expect(display).toEqual({
+      lines: ["{", '  "ok": true,', '  "items": [', "…"],
+      truncated: true,
+    });
+  });
+
   it("shows full text when expanded", () => {
     const display = formatMcpToolResultLines(result([
       { type: "text", text: "one\ntwo\nthree\nfour" },
